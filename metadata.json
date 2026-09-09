@@ -1,0 +1,7 @@
+{
+  "name": "座號戰機：20秒極限射擊",
+  "description": "以指定編號/座號為核心視覺元素的20秒極速Web飛機射擊遊戲，具備即時結算、Google Sheets輕量雲端資料庫串接與全域前5名排行榜。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
