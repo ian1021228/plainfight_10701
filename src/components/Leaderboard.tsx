@@ -62,12 +62,12 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({
               <h3 className="text-base font-bold font-['Chakra_Petch'] tracking-wide text-white">
                 全域前 5 名王牌排行榜
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
                 TOP 5 LEADERBOARD
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              即時同步 Google Sheets 雲端資料庫（累計 {totalRecords} 筆戰報）
+              即時同步 Firebase (flydrop-691bb) 雲端資料庫
             </p>
           </div>
         </div>

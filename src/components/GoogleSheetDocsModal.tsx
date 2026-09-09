@@ -175,6 +175,33 @@ export const GoogleSheetDocsModal: React.FC<GoogleSheetDocsModalProps> = ({
           </button>
         </div>
 
+        {/* Active Firebase Connection Status */}
+        <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-500/30 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-amber-400 font-bold font-['Chakra_Petch'] text-sm">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+              <span>已連線之 Firebase 雲端資料庫 (Firestore)</span>
+            </div>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+              ONLINE
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono text-slate-300">
+            <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800">
+              <span className="text-slate-400">Project ID:</span> <span className="text-amber-300 font-bold">flydrop-691bb</span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800">
+              <span className="text-slate-400">Auth Domain:</span> <span className="text-slate-200">flydrop-691bb.firebaseapp.com</span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800">
+              <span className="text-slate-400">目標集合 (Collection):</span> <span className="text-cyan-400 font-bold">scores</span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800">
+              <span className="text-slate-400">座號格式 (Seat / Pilot ID):</span> <span className="text-emerald-400 font-bold">107-01</span>
+            </div>
+          </div>
+        </div>
+
         {/* Evaluation Section */}
         <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 flex flex-col gap-3">
           <div className="flex items-center gap-2 text-amber-400 font-bold font-['Chakra_Petch'] text-sm">

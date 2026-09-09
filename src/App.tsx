@@ -6,6 +6,12 @@ import { ScoreSettlementModal } from "./components/ScoreSettlementModal";
 import { GoogleSheetDocsModal } from "./components/GoogleSheetDocsModal";
 import { sound } from "./utils/audio";
 import {
+  submitScoreToFirebase,
+  subscribeToFirebaseLeaderboard,
+  fetchTop5FromFirebase,
+  firebaseConfig,
+} from "./lib/firebase";
+import {
   Rocket,
   Volume2,
   VolumeX,
@@ -15,12 +21,13 @@ import {
   Zap,
   RotateCcw,
   Sparkles,
+  Flame,
 } from "lucide-react";
 
 export default function App() {
-  // Player Seat / Identifier State
+  // Player Seat / Identifier State (Default to 107-01)
   const [playerId, setPlayerId] = useState<string>(() => {
-    return localStorage.getItem("cadet_seat_number") || "07";
+    return localStorage.getItem("cadet_seat_number") || "107-01";
   });
 
   // Game flow states: 'lobby' | 'playing'
@@ -33,6 +40,7 @@ export default function App() {
   const [top5, setTop5] = useState<ScoreEntry[]>([]);
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [isLeaderboardLoading, setIsLeaderboardLoading] = useState<boolean>(false);
+  const [isFirebaseSynced, setIsFirebaseSynced] = useState<boolean>(true);
 
   // Score submission state
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -51,10 +59,20 @@ export default function App() {
     localStorage.setItem("cadet_seat_number", cleaned);
   };
 
-  // Fetch Leaderboard
+  // Fetch Leaderboard (from Firebase + fallback local API)
   const fetchLeaderboard = useCallback(async () => {
     setIsLeaderboardLoading(true);
     try {
+      // 1. Try fetching from Firebase Firestore first
+      const fbTop5 = await fetchTop5FromFirebase();
+      if (fbTop5 && fbTop5.length > 0) {
+        setTop5(fbTop5);
+        setIsFirebaseSynced(true);
+        setIsLeaderboardLoading(false);
+        return;
+      }
+
+      // 2. Fallback to Express backend API
       const res = await fetch("/api/leaderboard");
       if (res.ok) {
         const data = await res.json();
@@ -70,11 +88,23 @@ export default function App() {
     }
   }, []);
 
-  // Initial fetch and periodic refresh
+  // Real-time Firestore subscription & periodic fallback
   useEffect(() => {
     fetchLeaderboard();
+
+    // Subscribe to real-time Firebase Firestore leaderboard updates
+    const unsubscribe = subscribeToFirebaseLeaderboard((fbTop5) => {
+      if (fbTop5 && fbTop5.length > 0) {
+        setTop5(fbTop5);
+        setIsFirebaseSynced(true);
+      }
+    });
+
     const interval = setInterval(fetchLeaderboard, 12000);
-    return () => clearInterval(interval);
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, [fetchLeaderboard]);
 
   // Audio mute toggle
@@ -86,7 +116,7 @@ export default function App() {
   // Start 20-Second Game
   const handleStartGame = () => {
     if (!playerId.trim()) {
-      updateSeatNumber("01");
+      updateSeatNumber("107-01");
     }
     setLastStats(null);
     setPlayerRank(null);
@@ -101,6 +131,20 @@ export default function App() {
     setSubmissionSuccess(false);
 
     try {
+      // 1. Non-blocking async submission directly to Firebase Firestore
+      submitScoreToFirebase({
+        playerId: stats.playerId,
+        score: stats.score,
+        kills: stats.kills,
+        combo: stats.maxCombo,
+        accuracy: stats.accuracy,
+      }).then((fbResult) => {
+        if (fbResult.success) {
+          setIsFirebaseSynced(true);
+        }
+      });
+
+      // 2. Submit to local Express backend + Google Sheets pipeline
       const res = await fetch("/api/score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -127,8 +171,8 @@ export default function App() {
     }
   };
 
-  // Quick seat numbers for easy classroom/arcade selection
-  const quickSeatNumbers = ["01", "07", "12", "15", "23", "30", "36", "42"];
+  // Quick seat numbers for 107 squad
+  const quickSeatNumbers = ["107-01", "107-02", "107-03", "107-04", "107-05", "107-06", "107-07", "107-08"];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Noto_Sans_TC',sans-serif]">
@@ -150,9 +194,13 @@ export default function App() {
                 <span className="hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
                   20s CADET SHOOTER
                 </span>
+                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                  <Flame className="w-3 h-3 text-amber-400" />
+                  Firebase: flydrop-691bb
+                </span>
               </div>
               <p className="text-xs text-slate-400 font-mono">
-                座號核心視覺 • 20秒結算 • Google Sheets 即時同步前 5 名
+                座號核心視覺 • 20秒結算 • Firebase (flydrop-691bb) 雲端資料庫即時同步前 5 名
               </p>
             </div>
           </div>
@@ -174,8 +222,8 @@ export default function App() {
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-mono font-bold transition-colors cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Google Sheets 規格手冊</span>
-              <span className="sm:hidden">規格</span>
+              <span className="hidden sm:inline">資料庫與架構手冊</span>
+              <span className="sm:hidden">手冊</span>
             </button>
           </div>
         </div>
@@ -201,10 +249,10 @@ export default function App() {
                     核心視覺指定元素
                   </div>
                   <h2 className="text-xl sm:text-2xl font-black font-['Chakra_Petch'] text-white">
-                    請輸入你的「座號 / 學號識別碼」
+                    請確認你的「座號 / 學號識別碼」
                   </h2>
                   <p className="text-xs sm:text-sm text-slate-400 font-mono mt-1">
-                    指定之號碼將直接繪製於戰機機身與全息鎖定光環，並用於排行榜即時結算標識。
+                    指定之號碼將直接繪製於戰機機身與全息鎖定光環，並同步寫入 Firebase (<code className="text-amber-300">flydrop-691bb</code>) 與雲端排行榜。
                   </p>
                 </div>
 
@@ -216,16 +264,16 @@ export default function App() {
                       className="text-xs font-mono uppercase text-slate-400 tracking-wider flex items-center justify-between"
                     >
                       <span>座號代碼 (SEAT / PILOT ID)</span>
-                      <span className="text-[10px] text-cyan-400">支援數字或英數代號</span>
+                      <span className="text-[10px] text-cyan-400">目前預設: 107-01</span>
                     </label>
                     <div className="relative">
                       <input
                         id="seat-input"
                         type="text"
-                        maxLength={10}
+                        maxLength={12}
                         value={playerId}
                         onChange={(e) => updateSeatNumber(e.target.value)}
-                        placeholder="例如 07"
+                        placeholder="例如 107-01"
                         className="w-full px-4 py-3 bg-slate-900 border border-cyan-500/40 rounded-xl text-white font-['Orbitron'] text-xl tracking-wider focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30"
                       />
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-xs font-mono font-bold">
@@ -271,13 +319,13 @@ export default function App() {
                           <ellipse cx="24" cy="20" rx="4" ry="10" fill="#e0f2fe" />
                         </svg>
                         {/* Seat Number on Preview Fuselage */}
-                        <span className="absolute bottom-2 font-['Orbitron'] font-black text-xs text-white tracking-wider">
-                          {playerId || "07"}
+                        <span className="absolute bottom-2 font-['Orbitron'] font-black text-[10px] text-white tracking-wider">
+                          {playerId || "107-01"}
                         </span>
                       </div>
                     </div>
                     <div className="text-[11px] font-mono font-bold text-slate-300 mt-1">
-                      NO. {playerId || "07"} 戰隼號
+                      NO. {playerId || "107-01"} 戰隼號
                     </div>
                   </div>
                 </div>
@@ -289,12 +337,12 @@ export default function App() {
                     <div className="text-base sm:text-lg font-black font-['Orbitron'] text-cyan-400">20.0s</div>
                   </div>
                   <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-center">
-                    <div className="text-[11px] font-mono text-slate-400">終端雲端串接</div>
-                    <div className="text-xs sm:text-sm font-bold font-mono text-emerald-400">免登入即時連動</div>
+                    <div className="text-[11px] font-mono text-slate-400">Firebase 資料庫</div>
+                    <div className="text-xs sm:text-sm font-bold font-mono text-amber-400">flydrop-691bb</div>
                   </div>
                   <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-center">
                     <div className="text-[11px] font-mono text-slate-400">全域排行榜</div>
-                    <div className="text-xs sm:text-sm font-bold font-mono text-amber-400">即時爭奪前 5 名</div>
+                    <div className="text-xs sm:text-sm font-bold font-mono text-cyan-400">即時爭奪前 5 名</div>
                   </div>
                 </div>
 
@@ -305,7 +353,7 @@ export default function App() {
                   className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-cyan-500 via-sky-400 to-cyan-500 hover:from-cyan-400 hover:to-sky-300 text-slate-950 font-black font-['Chakra_Petch'] text-lg tracking-wider flex items-center justify-center gap-3 transition-all duration-200 active:scale-98 shadow-xl shadow-cyan-500/30 cursor-pointer"
                 >
                   <Rocket className="w-5 h-5 animate-pulse" />
-                  <span>立即啟動 20 秒出擊 (座號: NO. {playerId || "07"})</span>
+                  <span>立即啟動 20 秒出擊 (座號: NO. {playerId || "107-01"})</span>
                 </button>
               </div>
 

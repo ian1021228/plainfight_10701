@@ -120,14 +120,14 @@ export const ScoreSettlementModal: React.FC<ScoreSettlementModalProps> = ({
           </div>
         </div>
 
-        {/* Google Sheets Asynchronous Sync Status */}
+        {/* Firebase & Google Sheets Asynchronous Sync Status */}
         <div
           id="sheets-sync-status-box"
           className="px-4 py-3 rounded-2xl bg-slate-950/90 border border-slate-800 flex items-center justify-between text-xs font-mono"
         >
           <div className="flex items-center gap-2 text-slate-300">
             {isSubmitting ? (
-              <div className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
             ) : submissionSuccess ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             ) : (
@@ -135,12 +135,12 @@ export const ScoreSettlementModal: React.FC<ScoreSettlementModalProps> = ({
             )}
             <span>
               {isSubmitting
-                ? "非同步回傳 Google Sheets 雲端資料庫中..."
-                : "已自動非同步寫入 Google Sheets 雲端資料庫"}
+                ? "非同步回傳 Firebase 雲端資料庫中..."
+                : "已自動非同步寫入 Firebase (flydrop-691bb) 雲端資料庫"}
             </span>
           </div>
-          <span className="text-[10px] text-cyan-400 font-semibold px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
-            AUTO-SYNC
+          <span className="text-[10px] text-amber-400 font-semibold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+            FIREBASE SYNC
           </span>
         </div>
 

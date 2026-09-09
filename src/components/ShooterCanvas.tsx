@@ -771,7 +771,8 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
 
       // 3. Prominent SEAT NUMBER Stenciled on Aircraft Wings
       ctx.save();
-      ctx.font = "900 13px 'Orbitron', sans-serif";
+      const stencilSize = playerId.length > 5 ? 9 : playerId.length > 3 ? 10 : 13;
+      ctx.font = `900 ${stencilSize}px 'Orbitron', sans-serif`;
       ctx.fillStyle = "#ffffff";
       ctx.shadowColor = "#000000";
       ctx.shadowBlur = 4;
