@@ -28,6 +28,11 @@ export interface Bullet {
   color: string;
   damage: number;
   isPlayer: boolean;
+  pierce?: number;
+  isCrit?: boolean;
+  isExplosive?: boolean;
+  explosionRadius?: number;
+  sourceWeapon?: string;
 }
 
 export interface Enemy {
@@ -44,7 +49,69 @@ export interface Enemy {
   color: string;
   scoreValue: number;
   lastShootTime?: number;
+  shootInterval?: number;
   angle?: number;
+  vulnerabilityTimer?: number;
+  burnTimer?: number;
+  burnDps?: number;
+  slowTimer?: number;
+  slowFactor?: number;
+  isDead?: boolean;
+}
+
+export interface OrbitingBlade {
+  angle: number;
+  radius: number;
+  damage: number;
+  count: number;
+  shockwaveCooldown?: number;
+}
+
+export interface SeekerMissile {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  targetId?: number;
+  damage: number;
+  isCluster?: boolean;
+  subMunitionsLeft?: number;
+  lifeTime: number;
+  color: string;
+}
+
+export interface ToxicMineItem {
+  x: number;
+  y: number;
+  lifeTimer: number;
+  duration: number;
+  damage: number;
+  radius: number;
+  triggered: boolean;
+  poisonTimer: number;
+  poisonRadius: number;
+}
+
+export interface VortexItem {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  timer: number;
+  duration: number;
+  radius: number;
+  dps: number;
+  isCollapsing?: boolean;
+}
+
+export interface IonBeam {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  timer: number;
+  duration: number;
+  dps: number;
 }
 
 export interface Particle {
@@ -72,7 +139,7 @@ export interface PowerUp {
   x: number;
   y: number;
   vy: number;
-  type: "score" | "emp" | "rapid";
+  type: "score" | "emp" | "rapid" | "heal";
   radius: number;
 }
 

@@ -114,8 +114,12 @@ export const ScoreSettlementModal: React.FC<ScoreSettlementModalProps> = ({
               <Flame className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-[11px] font-mono text-slate-400">作戰時長</div>
-              <div className="text-xl font-black font-['Orbitron'] text-cyan-400">20.0s</div>
+              <div className="text-[11px] font-mono text-slate-400">極限生存時間</div>
+              <div className="text-xl font-black font-['Orbitron'] text-cyan-400">
+                {stats.durationSeconds >= 60
+                  ? `${Math.floor(stats.durationSeconds / 60)}分 ${(stats.durationSeconds % 60).toFixed(1)}秒`
+                  : `${stats.durationSeconds.toFixed(1)}s`}
+              </div>
             </div>
           </div>
         </div>
@@ -135,12 +139,12 @@ export const ScoreSettlementModal: React.FC<ScoreSettlementModalProps> = ({
             )}
             <span>
               {isSubmitting
-                ? "非同步回傳 Firebase 雲端資料庫中..."
-                : "已自動非同步寫入 Firebase (flydrop-691bb) 雲端資料庫"}
+                ? "非同步回傳雲端資料庫中..."
+                : "成績已自動同步至全域雲端排行榜"}
             </span>
           </div>
-          <span className="text-[10px] text-amber-400 font-semibold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
-            FIREBASE SYNC
+          <span className="text-[10px] text-emerald-400 font-semibold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+            SYNCED
           </span>
         </div>
 

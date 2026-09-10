@@ -66,8 +66,8 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({
                 TOP 5 LEADERBOARD
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              即時同步 Firebase (flydrop-691bb) 雲端資料庫
+            <p className="text-xs text-slate-400 font-mono">
+              全域即時連線 • 無限生存最高紀錄
             </p>
           </div>
         </div>
@@ -88,7 +88,7 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({
         {top5.length === 0 ? (
           <div className="py-8 text-center text-slate-500 text-sm font-mono flex flex-col items-center gap-2">
             <Crosshair className="w-8 h-8 text-slate-600 animate-pulse" />
-            <span>暫無排行數據，立即啟動 20 秒戰局挑戰首位！</span>
+            <span>暫無排行數據，立即啟動極限生存戰局挑戰首位！</span>
           </div>
         ) : (
           top5.slice(0, 5).map((entry, index) => {

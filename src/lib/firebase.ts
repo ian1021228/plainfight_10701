@@ -24,16 +24,18 @@ export const firebaseConfig = {
 };
 
 // Initialize Firebase App singleton
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-
+let app: any = null;
 let db: Firestore | null = null;
+let isFirestoreAvailable = true;
+
 try {
+  app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
   db = getFirestore(app);
 } catch (err) {
-  console.warn("Failed to initialize Firestore:", err);
+  isFirestoreAvailable = false;
 }
 
-export { app, db };
+export { app, db, isFirestoreAvailable };
 
 /**
  * Submit score asynchronously to Firebase Firestore 'scores' collection
@@ -45,8 +47,8 @@ export async function submitScoreToFirebase(entry: {
   combo: number;
   accuracy: number;
 }): Promise<{ success: boolean; id?: string; error?: string }> {
-  if (!db) {
-    return { success: false, error: "Firestore not initialized" };
+  if (!db || !isFirestoreAvailable) {
+    return { success: false, error: "Firestore currently unavailable" };
   }
 
   try {
@@ -63,8 +65,11 @@ export async function submitScoreToFirebase(entry: {
 
     return { success: true, id: docRef.id };
   } catch (err: unknown) {
-    console.warn("Firebase score submission error:", err);
-    return { success: false, error: String(err) };
+    const errMsg = String(err);
+    if (errMsg.includes("not found") || errMsg.includes("NOT_FOUND")) {
+      isFirestoreAvailable = false;
+    }
+    return { success: false, error: errMsg };
   }
 }
 
@@ -72,7 +77,7 @@ export async function submitScoreToFirebase(entry: {
  * Fetch Top 5 scores from Firebase Firestore
  */
 export async function fetchTop5FromFirebase(): Promise<ScoreEntry[]> {
-  if (!db) return [];
+  if (!db || !isFirestoreAvailable) return [];
 
   try {
     const scoresCol = collection(db, "scores");
@@ -84,7 +89,7 @@ export async function fetchTop5FromFirebase(): Promise<ScoreEntry[]> {
       const data = doc.data();
       results.push({
         id: doc.id,
-        playerId: data.playerId || "CADET",
+        playerId: data.playerId || "107-01",
         score: Number(data.score) || 0,
         kills: Number(data.kills) || 0,
         combo: Number(data.combo) || 0,
@@ -95,7 +100,7 @@ export async function fetchTop5FromFirebase(): Promise<ScoreEntry[]> {
 
     return results;
   } catch (err) {
-    console.warn("Error fetching Top 5 from Firebase:", err);
+    isFirestoreAvailable = false;
     return [];
   }
 }
@@ -107,7 +112,7 @@ export function subscribeToFirebaseLeaderboard(
   onUpdate: (top5: ScoreEntry[]) => void,
   onError?: (err: Error) => void
 ) {
-  if (!db) return () => {};
+  if (!db || !isFirestoreAvailable) return () => {};
 
   try {
     const scoresCol = collection(db, "scores");
@@ -121,7 +126,7 @@ export function subscribeToFirebaseLeaderboard(
           const data = doc.data();
           results.push({
             id: doc.id,
-            playerId: data.playerId || "CADET",
+            playerId: data.playerId || "107-01",
             score: Number(data.score) || 0,
             kills: Number(data.kills) || 0,
             combo: Number(data.combo) || 0,
@@ -132,14 +137,20 @@ export function subscribeToFirebaseLeaderboard(
         onUpdate(results);
       },
       (error) => {
-        console.warn("Firestore onSnapshot error:", error);
+        // If database does not exist or has connection issue, disable listener permanently
+        isFirestoreAvailable = false;
+        try {
+          unsubscribe();
+        } catch {
+          // ignore
+        }
         if (onError) onError(error);
       }
     );
 
     return unsubscribe;
   } catch (err) {
-    console.warn("Failed to attach Firestore snapshot listener:", err);
+    isFirestoreAvailable = false;
     return () => {};
   }
 }
