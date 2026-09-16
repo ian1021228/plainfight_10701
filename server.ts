@@ -86,9 +86,9 @@ async function startServer() {
     const apiKey = process.env.VITE_FIREBASE_API_KEY || "AIzaSyCbTCPeuXlpm6WH8HZwAc7f45hckYvdseA";
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2000);
+      const timeout = setTimeout(() => controller.abort(), 3000);
       const checkRes = await fetch(
-        `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents?key=${apiKey}`,
+        `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/scores?key=${apiKey}&pageSize=1`,
         { signal: controller.signal }
       );
       clearTimeout(timeout);
@@ -105,7 +105,45 @@ async function startServer() {
   // GET: Fetch global Leaderboard (Top 5 + total count)
   app.get("/api/leaderboard", async (_req, res) => {
     try {
-      // If Google Sheets WebApp URL is configured, try querying it
+      // 1. Try querying Firestore directly for global Top 5
+      const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "flydrop-691bb";
+      const apiKey = process.env.VITE_FIREBASE_API_KEY || "AIzaSyCbTCPeuXlpm6WH8HZwAc7f45hckYvdseA";
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const fsRes = await fetch(
+          `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/scores?key=${apiKey}&pageSize=50`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeoutId);
+        if (fsRes.ok) {
+          const fsData = await fsRes.json();
+          if (fsData.documents && Array.isArray(fsData.documents) && fsData.documents.length > 0) {
+            const parsed = fsData.documents.map((d: any) => {
+              const f = d.fields || {};
+              const id = d.name.split("/").pop();
+              return {
+                id,
+                playerId: f.playerId?.stringValue || "107-01",
+                score: Number(f.score?.integerValue || f.score?.doubleValue || 0),
+                kills: Number(f.kills?.integerValue || 0),
+                combo: Number(f.combo?.integerValue || 0),
+                accuracy: Number(f.accuracy?.integerValue || 0),
+                timestamp: f.timestamp?.stringValue || d.createTime,
+              };
+            }).sort((a: any, b: any) => b.score - a.score);
+            return res.json({
+              source: "firestore",
+              top5: parsed.slice(0, 5),
+              total: parsed.length,
+            });
+          }
+        }
+      } catch (fsErr) {
+        console.warn("Firestore fetch in leaderboard endpoint failed:", fsErr);
+      }
+
+      // 2. If Google Sheets WebApp URL is configured, try querying it
       const gasUrl = process.env.GOOGLE_SHEETS_WEBAPP_URL;
       if (gasUrl) {
         try {
