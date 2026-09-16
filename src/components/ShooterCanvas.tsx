@@ -10,12 +10,14 @@ interface ShooterCanvasProps {
   onGameOver: (stats: GameStats) => void;
   isAudioMuted: boolean;
   initialWeaponId?: WeaponId;
+  scaleMode?: "compact" | "normal" | "large";
 }
 
 export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
   playerId,
   onGameOver,
   initialWeaponId = "pulse_pistol",
+  scaleMode = "compact",
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -2281,28 +2283,34 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
       ref={containerRef}
       id="game-canvas-container"
       onPointerMove={handlePointerMove}
-      className="relative w-full h-full max-h-full aspect-[3/4] sm:aspect-[4/5] rounded-2xl overflow-hidden bg-slate-950 border border-cyan-500/30 shadow-2xl select-none touch-none cursor-crosshair flex items-center justify-center"
+      className={`relative w-full aspect-[3/4] sm:aspect-[4/5] rounded-xl sm:rounded-2xl overflow-hidden bg-slate-950 border border-cyan-500/30 shadow-2xl select-none touch-none cursor-crosshair flex items-center justify-center transition-all duration-200 ${
+        scaleMode === "compact"
+          ? "max-h-[calc(100dvh-54px)] max-w-[min(100%,calc((100dvh-54px)*0.75))]"
+          : scaleMode === "normal"
+          ? "max-h-[calc(100dvh-40px)] max-w-[min(100%,calc((100dvh-40px)*0.8))]"
+          : "max-h-[calc(100dvh-20px)] max-w-[min(100%,calc((100dvh-20px)*0.85))]"
+      }`}
     >
       {/* HTML5 Game Canvas */}
       <canvas ref={canvasRef} id="shooter-canvas" className="w-full h-full block" />
 
-      {/* Sleek Top Combat Dashboard HUD */}
+      {/* Sleek Top Combat Dashboard HUD - Tight & Responsive */}
       <div
         id="game-hud-top"
-        className="absolute top-2 inset-x-2 sm:inset-x-3 flex items-center justify-between pointer-events-none z-10 gap-2"
+        className="absolute top-1.5 sm:top-2 inset-x-1.5 sm:inset-x-3 flex items-center justify-between pointer-events-none z-10 gap-1 sm:gap-2"
       >
         {/* Left: Player Seat, Armor HP & Score */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-1.5">
           {/* Seat Tag */}
-          <div className="px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-cyan-500/40 shadow-md flex items-center gap-1.5">
-            <Crosshair className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            <span className="text-xs font-black font-['Orbitron'] text-white">NO. {playerId}</span>
+          <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg sm:rounded-xl bg-slate-900/90 backdrop-blur-md border border-cyan-500/40 shadow-md flex items-center gap-1">
+            <Crosshair className="w-3 h-3 text-cyan-400 animate-pulse" />
+            <span className="text-[10px] sm:text-xs font-black font-['Orbitron'] text-white">NO. {playerId}</span>
           </div>
 
           {/* Armor HP Bar */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-rose-500/40 shadow-md">
-            <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0 animate-pulse" />
-            <div className="w-12 sm:w-16 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+          <div className="flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg sm:rounded-xl bg-slate-900/90 backdrop-blur-md border border-rose-500/40 shadow-md">
+            <Heart className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-400 shrink-0 animate-pulse" />
+            <div className="w-10 sm:w-16 h-1.5 sm:h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
               <div
                 className={`h-full transition-all duration-200 ${
                   playerHp > 60
@@ -2314,15 +2322,15 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
                 style={{ width: `${Math.max(0, Math.min(100, playerHp))}%` }}
               />
             </div>
-            <span className="text-[11px] font-black font-['Orbitron'] text-white">
+            <span className="text-[10px] sm:text-[11px] font-black font-['Orbitron'] text-white">
               {playerHp}%
             </span>
           </div>
 
           {/* Score */}
-          <div className="px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-700/60 hidden xs:flex items-center gap-1.5">
-            <span className="text-[9px] font-mono text-slate-400 uppercase leading-none">SCORE</span>
-            <span className="text-xs sm:text-sm font-black font-['Orbitron'] text-cyan-400">
+          <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg sm:rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-700/60 hidden xs:flex items-center gap-1">
+            <span className="text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase leading-none">SCORE</span>
+            <span className="text-[11px] sm:text-xs font-black font-['Orbitron'] text-cyan-400">
               {score.toLocaleString()}
             </span>
           </div>
@@ -2331,23 +2339,23 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
         {/* Center: Survival Time Timer */}
         <div
           id="hud-timer-widget"
-          className={`flex items-center gap-2 px-3 py-1 rounded-xl backdrop-blur-md border transition-all duration-300 ${
+          className={`flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg sm:rounded-xl backdrop-blur-md border transition-all duration-300 ${
             isRushMode
               ? "bg-rose-950/90 border-rose-500 shadow-lg shadow-rose-600/50 scale-105"
               : "bg-slate-900/90 border-cyan-500/40 shadow-md"
           }`}
         >
           <ShieldAlert
-            className={`w-3.5 h-3.5 shrink-0 ${
+            className={`w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 ${
               isRushMode ? "text-rose-400 animate-ping" : "text-cyan-400"
             }`}
           />
-          <div className="flex flex-col">
-            <span className="text-[9px] font-mono tracking-wider text-slate-400 uppercase leading-none">
+          <div className="flex flex-col text-center">
+            <span className="text-[8px] sm:text-[9px] font-mono tracking-wider text-slate-400 uppercase leading-none">
               {isRushMode ? "暴走突襲" : "存活時間"}
             </span>
             <span
-              className={`text-xs sm:text-sm font-black font-['Orbitron'] tracking-wider ${
+              className={`text-[11px] sm:text-xs font-black font-['Orbitron'] tracking-wider leading-tight ${
                 isRushMode ? "text-rose-400 animate-pulse" : "text-white"
               }`}
             >
@@ -2357,19 +2365,19 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
         </div>
 
         {/* Right: EXP Upgrade Progress, Combo & EMP */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-1.5">
           {/* EXP Progression Bar */}
           <div
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-amber-500/40 shadow-md"
+            className="flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-lg sm:rounded-xl bg-slate-900/90 backdrop-blur-md border border-amber-500/40 shadow-md"
             title={`擊墜升級進度：${killsCount} / ${upgradeTarget}`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
             <div className="flex flex-col">
-              <div className="flex items-center justify-between text-[9px] font-mono leading-none gap-2">
-                <span className="text-amber-400 font-bold">升級 EXP</span>
+              <div className="flex items-center justify-between text-[8px] font-mono leading-none gap-1 sm:gap-2">
+                <span className="text-amber-400 font-bold">EXP</span>
                 <span className="text-slate-300 font-bold">{killsCount}/{upgradeTarget}</span>
               </div>
-              <div className="w-12 sm:w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700/80 mt-0.5">
+              <div className="w-9 sm:w-14 h-1 sm:h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700/80 mt-0.5">
                 <div
                   className="h-full bg-gradient-to-r from-cyan-400 to-amber-400 transition-all duration-300"
                   style={{ width: `${expProgress}%` }}
@@ -2380,8 +2388,8 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
 
           {/* Combo Badge */}
           {combo > 1 && (
-            <div className="px-2 py-1 rounded-xl bg-amber-500/20 border border-amber-500/50 backdrop-blur-md animate-bounce">
-              <span className="text-xs font-black font-['Orbitron'] text-amber-300">{combo}x</span>
+            <div className="px-1.5 py-0.5 rounded-lg bg-amber-500/20 border border-amber-500/50 backdrop-blur-md animate-bounce">
+              <span className="text-[10px] sm:text-xs font-black font-['Orbitron'] text-amber-300">{combo}x</span>
             </div>
           )}
 
@@ -2390,14 +2398,14 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
             id="emp-ability-btn"
             onClick={triggerEmp}
             disabled={!empReady}
-            className={`pointer-events-auto px-2.5 sm:px-3 py-1 rounded-xl flex items-center gap-1 font-bold font-['Chakra_Petch'] text-xs uppercase tracking-wider transition-all duration-200 ${
+            className={`pointer-events-auto px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl flex items-center gap-0.5 sm:gap-1 font-bold font-['Chakra_Petch'] text-[10px] sm:text-xs uppercase tracking-wider transition-all duration-200 ${
               empReady
                 ? "bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md shadow-cyan-500/40 active:scale-95 cursor-pointer"
                 : "bg-slate-800/80 text-slate-500 border border-slate-700/50 cursor-not-allowed"
             }`}
             title="釋放全畫面超導 EMP 震波 (快捷鍵: E)"
           >
-            <Zap className="w-3.5 h-3.5" />
+            <Zap className="w-3 h-3" />
             <span>EMP{empReady ? "[E]" : ""}</span>
           </button>
         </div>
@@ -2406,7 +2414,7 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
       {/* Streamlined Active Weapon Arsenal Strip */}
       <div
         id="hud-weapon-arsenal"
-        className="absolute top-12 left-2 sm:left-3 flex flex-wrap items-center gap-1 pointer-events-none z-10 max-w-[80%]"
+        className="absolute top-9 sm:top-11 left-1.5 sm:left-3 flex flex-wrap items-center gap-1 pointer-events-none z-10 max-w-[85%]"
       >
         {(Object.keys(equippedWeapons) as WeaponId[]).map((wId) => {
           const lvl = equippedWeapons[wId];

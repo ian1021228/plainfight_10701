@@ -24,6 +24,8 @@ import {
   ShieldAlert,
   BookOpen,
   CheckCircle2,
+  Minimize2,
+  Maximize2,
 } from "lucide-react";
 
 export default function App() {
@@ -53,6 +55,9 @@ export default function App() {
 
   // Audio mute state
   const [isMuted, setIsMuted] = useState<boolean>(false);
+
+  // Canvas display scaling mode: 'compact' (縮小不需滾動) | 'normal' (標準) | 'large' (大畫面)
+  const [canvasScaleMode, setCanvasScaleMode] = useState<"compact" | "normal" | "large">("compact");
 
   // Fetch Leaderboard (from Firebase if verified, else fallback to Express backend API)
   const fetchLeaderboard = useCallback(async (isFbActive = false) => {
@@ -217,32 +222,35 @@ export default function App() {
   const activeWeaponData = WEAPONS_CATALOG[selectedStartingWeapon];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Noto_Sans_TC',sans-serif]">
+    <div className={`bg-slate-950 text-slate-100 flex flex-col font-['Noto_Sans_TC',sans-serif] ${gameMode === "playing" ? "h-[100dvh] max-h-[100dvh] overflow-hidden" : "min-h-screen"}`}>
       {/* ========================================================
           VERY TOP AUTHOR BANNER (Created by 107-01_王禹硯)
+          Only displayed in Lobby to save vertical space in active combat
           ======================================================== */}
-      <div
-        id="top-author-banner"
-        className="w-full bg-gradient-to-r from-cyan-950 via-slate-900 to-indigo-950 border-b border-cyan-500/40 py-2.5 px-4 text-center shadow-lg shadow-cyan-950/40 z-50"
-      >
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#38bdf8]" />
-            <span className="text-xs sm:text-sm font-black font-['Chakra_Petch'] tracking-widest text-cyan-300">
-              Created by 107-01_王禹硯
-            </span>
-          </div>
+      {gameMode === "lobby" && (
+        <div
+          id="top-author-banner"
+          className="w-full bg-gradient-to-r from-cyan-950 via-slate-900 to-indigo-950 border-b border-cyan-500/40 py-2.5 px-4 text-center shadow-lg shadow-cyan-950/40 z-50 shrink-0"
+        >
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#38bdf8]" />
+              <span className="text-xs sm:text-sm font-black font-['Chakra_Petch'] tracking-widest text-cyan-300">
+                Created by 107-01_王禹硯
+              </span>
+            </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
-              座號代碼: 107-01 (唯一指定)
-            </span>
-            <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold hidden sm:inline-block">
-              敵軍戰機彈幕武裝強化
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
+                座號代碼: 107-01 (唯一指定)
+              </span>
+              <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold hidden sm:inline-block">
+                敵軍戰機彈幕武裝強化
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Main Header (Only in Lobby mode for clean, maximized playing canvas) */}
       {gameMode === "lobby" && (
@@ -299,7 +307,7 @@ export default function App() {
       <main
         className={
           gameMode === "playing"
-            ? "flex-1 w-full h-[100dvh] p-1.5 sm:p-2.5 flex flex-col items-center justify-between overflow-hidden"
+            ? "flex-1 w-full h-full min-h-0 p-1 sm:p-2 flex flex-col items-center justify-between overflow-hidden"
             : "flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6"
         }
       >
@@ -550,6 +558,33 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-2">
+                {/* 畫面縮放切換按鈕 (縮小避免需要向上捲動) */}
+                <button
+                  id="playing-scale-btn"
+                  onClick={() =>
+                    setCanvasScaleMode((prev) =>
+                      prev === "compact" ? "normal" : prev === "normal" ? "large" : "compact"
+                    )
+                  }
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-bold flex items-center gap-1 border border-cyan-500/40 transition-colors cursor-pointer"
+                  title={`當前視窗縮放：${
+                    canvasScaleMode === "compact" ? "縮小最適視圖 (免捲動)" : canvasScaleMode === "normal" ? "標準視圖" : "放大視圖"
+                  }`}
+                >
+                  {canvasScaleMode === "compact" ? (
+                    <Minimize2 className="w-3.5 h-3.5 text-cyan-400" />
+                  ) : (
+                    <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+                  )}
+                  <span>
+                    {canvasScaleMode === "compact"
+                      ? "最適縮小"
+                      : canvasScaleMode === "normal"
+                      ? "標準"
+                      : "放大"}
+                  </span>
+                </button>
+
                 <button
                   id="playing-catalog-btn"
                   onClick={() => setIsCatalogOpen(true)}
@@ -580,7 +615,7 @@ export default function App() {
             </div>
 
             {/* Maximized Game Canvas Container */}
-            <div className="w-full flex-1 min-h-0 flex items-center justify-center">
+            <div className="w-full flex-1 min-h-0 flex items-center justify-center overflow-hidden">
               <div className="w-full h-full max-w-5xl flex items-center justify-center">
                 <ShooterCanvas
                   key={`game-session-${gameSessionId}`}
@@ -588,6 +623,7 @@ export default function App() {
                   onGameOver={handleGameOver}
                   isAudioMuted={isMuted}
                   initialWeaponId={selectedStartingWeapon}
+                  scaleMode={canvasScaleMode}
                 />
               </div>
             </div>
