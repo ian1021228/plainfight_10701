@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 20秒極限射擊：排行榜作戰成績紀錄 (scores)
+    match /scores/{scoreId} {
+      // 允許公開讀取（即時排行榜 Top 5 與即時同步）
+      allow read: if true;
+
+      // 允許玩家上傳新成績（驗證基本欄位格式與有效性）
+      allow create: if request.resource.data.score is number
+                    && request.resource.data.score >= 0
+                    && request.resource.data.playerId is string
+                    && request.resource.data.playerId.size() > 0
+                    && request.resource.data.playerId.size() <= 30;
+
+      // 禁止修改或刪除已提交的歷史成績紀錄，防止作弊
+      allow update, delete: if false;
+    }
+
+    // 其他未開放的路徑預設拒絕
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -65,6 +65,16 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Favicon handler to prevent 404
+  app.get("/favicon.ico", (_req, res) => {
+    const svgPath = path.join(process.cwd(), "public", "favicon.svg");
+    if (fs.existsSync(svgPath)) {
+      res.setHeader("Content-Type", "image/svg+xml");
+      return res.sendFile(svgPath);
+    }
+    res.status(204).end();
+  });
+
   // Health check
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });

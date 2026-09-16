@@ -44,6 +44,7 @@ export default function App() {
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [isLeaderboardLoading, setIsLeaderboardLoading] = useState<boolean>(false);
   const [, setIsFirebaseSynced] = useState<boolean>(true);
+  const [gameSessionId, setGameSessionId] = useState<number>(0);
 
   // Score submission state
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -106,11 +107,12 @@ export default function App() {
     setIsMuted(nextMute);
   };
 
-  // Start 20-Second Game
+  // Start Game
   const handleStartGame = () => {
     setLastStats(null);
     setPlayerRank(null);
     setIsTop5(false);
+    setGameSessionId((id) => id + 1);
     setGameMode("playing");
   };
 
@@ -191,57 +193,65 @@ export default function App() {
         </div>
       </div>
 
-      {/* Main Header */}
-      <header
-        id="app-header"
-        className="w-full border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-40 px-4 py-3"
-      >
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-md shadow-cyan-950/50">
-              <Rocket className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-black font-['Chakra_Petch'] tracking-wide text-white">
-                  座號戰機：極限生存射擊
-                </h1>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold">
-                  NO. 107-01
-                </span>
+      {/* Main Header (Only in Lobby mode for clean, maximized playing canvas) */}
+      {gameMode === "lobby" && (
+        <header
+          id="app-header"
+          className="w-full border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-40 px-4 py-3"
+        >
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-md shadow-cyan-950/50">
+                <Rocket className="w-5 h-5" />
               </div>
-              <p className="text-xs text-slate-400 font-mono">
-                10 大戰術武器庫 • 敵機彈幕射擊機制 • 無限時間生存挑戰
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-base sm:text-lg font-black font-['Chakra_Petch'] tracking-wide text-white">
+                    座號戰機：極限生存射擊
+                  </h1>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold">
+                    NO. 107-01
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 font-mono">
+                  10 大戰術武器庫 • 敵機彈幕射擊機制 • 無限時間生存挑戰
+                </p>
+              </div>
+            </div>
+
+            {/* Right Action Tools */}
+            <div className="flex items-center gap-2">
+              <button
+                id="header-catalog-btn"
+                onClick={() => setIsCatalogOpen(true)}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-bold flex items-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
+                title="查看 10 大武器研發檔案庫"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="hidden sm:inline">武器檔案庫</span>
+              </button>
+
+              <button
+                id="header-sound-btn"
+                onClick={toggleSound}
+                className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                title={isMuted ? "開啟音效" : "靜音"}
+              >
+                {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
+              </button>
             </div>
           </div>
-
-          {/* Right Action Tools */}
-          <div className="flex items-center gap-2">
-            <button
-              id="header-catalog-btn"
-              onClick={() => setIsCatalogOpen(true)}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-bold flex items-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
-              title="查看 10 大武器研發檔案庫"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline">武器檔案庫</span>
-            </button>
-
-            <button
-              id="header-sound-btn"
-              onClick={toggleSound}
-              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-              title={isMuted ? "開啟音效" : "靜音"}
-            >
-              {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
-            </button>
-          </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6">
+      <main
+        className={
+          gameMode === "playing"
+            ? "flex-1 w-full h-[100dvh] p-1.5 sm:p-2.5 flex flex-col items-center justify-between overflow-hidden"
+            : "flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6"
+        }
+      >
         {gameMode === "lobby" ? (
           /* ========================================================
              LOBBY VIEW: Seat Assignment & Mission Briefing
@@ -470,36 +480,59 @@ export default function App() {
           </div>
         ) : (
           /* ========================================================
-             PLAYING VIEW: 20-Second Active Canvas Shooter
+             PLAYING VIEW: Maximized Active Combat Canvas
              ======================================================== */
-          <div className="flex flex-col gap-4">
-            {/* Top In-Game Bar */}
-            <div className="flex items-center justify-between px-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-slate-400">目前出擊座號:</span>
-                <span className="px-2.5 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 font-['Orbitron'] font-black text-sm border border-cyan-500/30">
-                  NO. {playerId}
+          <div className="w-full h-full flex flex-col gap-2 min-h-0">
+            {/* Streamlined Top In-Game Bar */}
+            <div className="flex items-center justify-between px-2 py-1 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/15 text-cyan-300 font-['Orbitron'] font-black text-xs sm:text-sm border border-cyan-500/30 shadow-sm">
+                  <Rocket className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>NO. {playerId}</span>
+                </div>
+                <span className="text-xs font-mono text-slate-300 hidden sm:inline font-bold">
+                  座號戰機：極限生存
                 </span>
-                <span className="text-xs font-mono text-slate-500 hidden sm:inline">
-                  • Created by 107-01_王禹硯
+                <span className="text-[11px] font-mono text-slate-500 hidden md:inline">
+                  • 107-01_王禹硯
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setGameMode("lobby")}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  id="playing-catalog-btn"
+                  onClick={() => setIsCatalogOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-bold flex items-center gap-1 border border-slate-700 transition-colors cursor-pointer"
+                  title="查看武器檔案庫"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>結束並返回大廳</span>
+                  <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="hidden sm:inline">武器庫</span>
+                </button>
+
+                <button
+                  id="playing-sound-btn"
+                  onClick={toggleSound}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                  title={isMuted ? "開啟音效" : "靜音"}
+                >
+                  {isMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-cyan-400" />}
+                </button>
+
+                <button
+                  onClick={() => setGameMode("lobby")}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-rose-900/60 hover:text-rose-200 text-slate-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                  <span>返回大廳</span>
                 </button>
               </div>
             </div>
 
-            {/* Game Canvas Container */}
-            <div className="w-full flex justify-center">
-              <div className="w-full max-w-3xl aspect-[4/5] sm:aspect-[3/4] max-h-[720px]">
+            {/* Maximized Game Canvas Container */}
+            <div className="w-full flex-1 min-h-0 flex items-center justify-center">
+              <div className="w-full h-full max-w-5xl flex items-center justify-center">
                 <ShooterCanvas
+                  key={`game-session-${gameSessionId}`}
                   playerId={playerId}
                   onGameOver={handleGameOver}
                   isAudioMuted={isMuted}
@@ -521,6 +554,9 @@ export default function App() {
           submissionSuccess={submissionSuccess}
           onPlayAgain={() => {
             setLastStats(null);
+            setPlayerRank(null);
+            setIsTop5(false);
+            setGameSessionId((id) => id + 1);
             setGameMode("playing");
           }}
           onViewLeaderboard={() => {
@@ -537,16 +573,18 @@ export default function App() {
         onClose={() => setIsCatalogOpen(false)}
       />
 
-      {/* Footer */}
-      <footer className="w-full border-t border-slate-800/80 bg-slate-950/80 py-4 px-4 text-center text-xs font-mono text-slate-400">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>座號戰機：20秒極限射擊 • Created by 107-01_王禹硯</span>
-          <div className="flex items-center gap-2 text-cyan-400 font-semibold">
-            <Zap className="w-3.5 h-3.5 text-cyan-400" />
-            <span>10 大戰術武器系統 • Firebase 即時同步</span>
+      {/* Footer (Only in Lobby mode to preserve maximum screen space for combat) */}
+      {gameMode === "lobby" && (
+        <footer className="w-full border-t border-slate-800/80 bg-slate-950/80 py-4 px-4 text-center text-xs font-mono text-slate-400">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+            <span>座號戰機：極限生存射擊 • Created by 107-01_王禹硯</span>
+            <div className="flex items-center gap-2 text-cyan-400 font-semibold">
+              <Zap className="w-3.5 h-3.5 text-cyan-400" />
+              <span>10 大戰術武器系統 • Firebase 即時同步</span>
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

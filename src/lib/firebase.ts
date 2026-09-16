@@ -13,26 +13,28 @@ import {
 } from "firebase/firestore";
 import { ScoreEntry } from "../types";
 
-// User's Firebase project configuration
+// Firebase project configuration
 export const firebaseConfig = {
-  apiKey: "AIzaSyCbTCPeuXlpm6WH8HZwAc7f45hckYvdseA",
-  authDomain: "flydrop-691bb.firebaseapp.com",
-  projectId: "flydrop-691bb",
-  storageBucket: "flydrop-691bb.firebasestorage.app",
-  messagingSenderId: "209916357825",
-  appId: "1:209916357825:web:477e1c3fd444126d2bb840",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCbTCPeuXlpm6WH8HZwAc7f45hckYvdseA",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "flydrop-691bb.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "flydrop-691bb",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "flydrop-691bb.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "209916357825",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:209916357825:web:477e1c3fd444126d2bb840",
 };
 
 // Initialize Firebase App singleton
 let app: any = null;
 let db: Firestore | null = null;
-let isFirestoreAvailable = true;
+let isFirestoreAvailable = false;
 
 try {
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
   db = getFirestore(app);
+  isFirestoreAvailable = true;
 } catch (err) {
   isFirestoreAvailable = false;
+  console.warn("Firebase initialization skipped or failed:", err);
 }
 
 export { app, db, isFirestoreAvailable };

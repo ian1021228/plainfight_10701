@@ -27,6 +27,9 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
   const [playerHp, setPlayerHp] = useState<number>(100);
   const [empReady, setEmpReady] = useState<boolean>(true);
   const [isRushMode, setIsRushMode] = useState<boolean>(false);
+  const [killsCount, setKillsCount] = useState<number>(0);
+  const [upgradeTarget, setUpgradeTarget] = useState<number>(6);
+  const [prevUpgradeTarget, setPrevUpgradeTarget] = useState<number>(0);
 
   // Weapon Upgrade Modal state
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState<boolean>(false);
@@ -53,12 +56,14 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
     empTimer: 18.0,
     score: 0,
     kills: 0,
-    nextUpgradeKills: 4, // First upgrade at 4 kills, then 8, 13, 19, 26, 34...
+    prevUpgradeKills: 0,
+    nextUpgradeKills: 6, // Slightly increased starting requirement: 6 kills, then 14, 24, 37, 53, 73...
     shotsFired: 0,
     shotsHit: 0,
     combo: 0,
     maxCombo: 0,
     empReady: true,
+    overdriveBonusDamage: 0,
     player: {
       x: 300,
       y: 500,
@@ -198,6 +203,10 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
   const applyDamageToEnemy = (enemy: Enemy, rawDamage: number, sourceWeapon?: string, hitX?: number, hitY?: number) => {
     if (enemy.isDead) return;
     let dmg = rawDamage;
+    const state = stateRef.current;
+    if (state.overdriveBonusDamage && state.overdriveBonusDamage > 0) {
+      dmg *= 1 + state.overdriveBonusDamage;
+    }
     if (enemy.vulnerabilityTimer && enemy.vulnerabilityTimer > 0) {
       dmg *= 1.3;
     }
@@ -298,7 +307,7 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
     sound.playLevelUp();
     state.isPausedForUpgrade = true;
 
-    // Select 3 random upgrade options
+    // Select random upgrade options
     const allWeaponIds = Object.keys(WEAPONS_CATALOG) as WeaponId[];
     const candidates: UpgradeOption[] = [];
 
@@ -310,68 +319,153 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
       }
     });
 
-    // Shuffle and pick 3
+    // Shuffle and pick candidates
     for (let i = candidates.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
     }
-    const chosenOptions = candidates.slice(0, 3);
+    const chosenOptions: UpgradeOption[] = candidates.slice(0, 3);
+
+    // Overdrive perks pool when weapons are maxed or slots remain
+    const overdrivePool: UpgradeOption[] = [
+      {
+        isOverdrive: true,
+        overdriveType: "repair",
+        title: "奈米全修復超頻力場",
+        description: "立即完全修復 100% 裝甲生命值，並生成持續 5 秒的無敵防護護盾！",
+        color: "#10b981",
+      },
+      {
+        isOverdrive: true,
+        overdriveType: "nuke",
+        title: "超導核能 EMP 脈衝",
+        description: "引爆全屏超導核爆，蒸發全場所有敵機與彈幕，並獎勵巨額作戰積分！",
+        color: "#38bdf8",
+      },
+      {
+        isOverdrive: true,
+        overdriveType: "overdrive",
+        title: "極限過載狂暴火力",
+        description: "啟動軍火過載超頻，所有武器傷害永久額外 +25%，機體航速同步強化！",
+        color: "#f59e0b",
+      },
+    ];
+
+    let odIndex = 0;
+    while (chosenOptions.length < 3 && odIndex < overdrivePool.length) {
+      chosenOptions.push(overdrivePool[odIndex]);
+      odIndex++;
+    }
 
     setUpgradeOptions(chosenOptions);
     setCurrentKills(state.kills);
     setIsUpgradeModalOpen(true);
   }, []);
 
-  // Player selected an upgrade
-  const handleSelectUpgrade = useCallback((weaponId: WeaponId) => {
+  // Player selected an upgrade or overdrive perk
+  const handleSelectUpgrade = useCallback((choice: string) => {
     const state = stateRef.current;
-    const currentLvl = state.weapons[weaponId] || 0;
-    const nextLvl = Math.min(5, currentLvl + 1);
 
-    state.weapons[weaponId] = nextLvl;
-    setEquippedWeapons({ ...state.weapons });
+    if (choice.startsWith("overdrive:")) {
+      const odType = choice.replace("overdrive:", "");
+      if (odType === "repair") {
+        state.player.hp = state.player.maxHp;
+        state.player.invulnerableTimer = 5.0;
+        setPlayerHp(state.player.hp);
+        sound.playPowerUp();
+        createExplosion(state.player.x, state.player.y, "#10b981", 30);
+        state.floatingTexts.push({
+          id: Math.random(),
+          x: state.player.x - 45,
+          y: state.player.y - 50,
+          text: "★ 裝甲 100% 修復 + 5秒無敵護盾!",
+          color: "#10b981",
+          alpha: 1,
+          vy: -2,
+        });
+      } else if (odType === "nuke") {
+        triggerEmp();
+        state.score += 600;
+        setScore(state.score);
+        state.floatingTexts.push({
+          id: Math.random(),
+          x: state.player.x - 45,
+          y: state.player.y - 50,
+          text: "★ 超導核能全屏清空 +600分!",
+          color: "#38bdf8",
+          alpha: 1,
+          vy: -2,
+        });
+      } else if (odType === "overdrive") {
+        state.overdriveBonusDamage = (state.overdriveBonusDamage || 0) + 0.25;
+        state.player.speed = Math.min(10.5, state.player.speed * 1.1);
+        sound.playLevelUp();
+        createExplosion(state.player.x, state.player.y, "#f59e0b", 30);
+        state.floatingTexts.push({
+          id: Math.random(),
+          x: state.player.x - 45,
+          y: state.player.y - 50,
+          text: "★ 全軍械過載：傷害 +25% 航速提升!",
+          color: "#f59e0b",
+          alpha: 1,
+          vy: -2,
+        });
+      }
+    } else if (choice !== "resume" && choice in WEAPONS_CATALOG) {
+      const weaponId = choice as WeaponId;
+      const currentLvl = state.weapons[weaponId] || 0;
+      const nextLvl = Math.min(5, currentLvl + 1);
 
-    // Update state & ammo capacities
-    if (weaponId === "pulse_pistol") {
-      state.weaponTimers.pulse_pistol.maxAmmo = nextLvl >= 2 ? 15 : 12;
-      state.weaponTimers.pulse_pistol.ammo = state.weaponTimers.pulse_pistol.maxAmmo;
-    } else if (weaponId === "assault_rifle") {
-      state.weaponTimers.assault_rifle.maxAmmo = nextLvl >= 3 ? 45 : 30;
-      state.weaponTimers.assault_rifle.ammo = state.weaponTimers.assault_rifle.maxAmmo;
-    }
+      state.weapons[weaponId] = nextLvl;
+      setEquippedWeapons({ ...state.weapons });
 
-    // Floating text above player
-    const weaponDef = WEAPONS_CATALOG[weaponId];
-    state.floatingTexts.push({
-      id: Math.random(),
-      x: state.player.x - 40,
-      y: state.player.y - 50,
-      text: `★ ${weaponDef.name} Lv.${nextLvl}!`,
-      color: weaponDef.color,
-      alpha: 1,
-      vy: -2,
-    });
+      // Update state & ammo capacities
+      if (weaponId === "pulse_pistol") {
+        state.weaponTimers.pulse_pistol.maxAmmo = nextLvl >= 2 ? 15 : 12;
+        state.weaponTimers.pulse_pistol.ammo = state.weaponTimers.pulse_pistol.maxAmmo;
+      } else if (weaponId === "assault_rifle") {
+        state.weaponTimers.assault_rifle.maxAmmo = nextLvl >= 3 ? 45 : 30;
+        state.weaponTimers.assault_rifle.ammo = state.weaponTimers.assault_rifle.maxAmmo;
+      }
 
-    // Burst of sparkle particles around player
-    for (let i = 0; i < 24; i++) {
-      const angle = (i / 24) * Math.PI * 2;
-      state.particles.push({
-        x: state.player.x,
-        y: state.player.y,
-        vx: Math.cos(angle) * 4,
-        vy: Math.sin(angle) * 4,
-        size: 3,
+      // Floating text above player
+      const weaponDef = WEAPONS_CATALOG[weaponId];
+      state.floatingTexts.push({
+        id: Math.random(),
+        x: state.player.x - 40,
+        y: state.player.y - 50,
+        text: `★ ${weaponDef.name} Lv.${nextLvl}!`,
         color: weaponDef.color,
         alpha: 1,
-        decay: 0.03,
+        vy: -2,
       });
+
+      // Burst of sparkle particles around player
+      for (let i = 0; i < 24; i++) {
+        const angle = (i / 24) * Math.PI * 2;
+        state.particles.push({
+          x: state.player.x,
+          y: state.player.y,
+          vx: Math.cos(angle) * 4,
+          vy: Math.sin(angle) * 4,
+          size: 3,
+          color: weaponDef.color,
+          alpha: 1,
+          decay: 0.03,
+        });
+      }
     }
 
-    // Set next upgrade milestone (escalating curve: +4, +5, +6...)
-    state.nextUpgradeKills += Math.min(8, 4 + Math.floor(state.kills / 6));
+    // Set next upgrade milestone with escalating EXP curve (slightly increased as requested)
+    const killsIncrement = Math.min(26, 7 + Math.floor(state.kills / 3.8));
+    state.prevUpgradeKills = state.nextUpgradeKills;
+    state.nextUpgradeKills += killsIncrement;
+    setUpgradeTarget(state.nextUpgradeKills);
+    setPrevUpgradeTarget(state.prevUpgradeKills);
+
     state.isPausedForUpgrade = false;
     setIsUpgradeModalOpen(false);
-  }, []);
+  }, [triggerEmp]);
 
   // Main 60FPS Game Loop
   useEffect(() => {
@@ -766,9 +860,9 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
             const baseDmg = 20;
 
             for (let a = 0; a < arcCount; a++) {
-              // Find closest alive enemy to player
+              // Find closest alive enemy to player across the entire screen
               let nearestEnemy: Enemy | null = null;
-              let nearestDist = 380;
+              let nearestDist = 750;
               liveEnemies.forEach((e) => {
                 if (e.isDead) return;
                 const d = Math.sqrt((e.x + e.width / 2 - p.x) ** 2 + (e.y + e.height / 2 - p.y) ** 2);
@@ -811,7 +905,7 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
 
                   // Find next chain target
                   let nextTarget: Enemy | null = null;
-                  let nextDist = 200;
+                  let nextDist = 280;
                   state.enemies.forEach((candidate) => {
                     if (!candidate.isDead && !hitEnemies.has(candidate.id)) {
                       const cd = Math.sqrt((candidate.x + candidate.width / 2 - targetCenterX) ** 2 + (candidate.y + candidate.height / 2 - targetCenterY) ** 2);
@@ -839,7 +933,7 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
       if (state.weapons.flamethrower >= 1) {
         const lvl = state.weapons.flamethrower;
         const wt = state.weaponTimers.flamethrower;
-        const range = lvl >= 2 ? 240 : 170;
+        const range = lvl >= 2 ? 340 : 250;
         const baseDmg = lvl >= 5 ? 7.2 : 4.5;
         const isBlue = lvl >= 5;
 
@@ -858,7 +952,7 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
           });
         }
 
-        if (currentTime - wt.lastTick >= 160) {
+        if (currentTime - wt.lastTick >= 120) {
           wt.lastTick = currentTime;
           state.enemies.forEach((enemy) => {
             if (enemy.isDead) return;
@@ -866,8 +960,8 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
             const ey = enemy.y + enemy.height / 2;
             const dy = ey - p.y;
             const dx = ex - p.x;
-            const coneWidth = 40 + Math.abs(dy) * 0.35;
-            if (dy < 0 && Math.abs(dy) < range && Math.abs(dx) < coneWidth) {
+            const coneWidth = 55 + Math.abs(dy) * 0.42;
+            if (dy < 0 && Math.abs(dy) < range + enemy.height / 2 && Math.abs(dx) < coneWidth + enemy.width / 2) {
               applyDamageToEnemy(enemy, baseDmg, "flamethrower", ex, ey);
               if (lvl >= 3) {
                 enemy.burnTimer = 2.0;
@@ -971,70 +1065,102 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
       }
 
       // ========================================================
-      // 4. ENEMY SPAWNING WITH JET FIGHTER UPGRADES
+      // 4. ENEMY SPAWNING WITH ACCELERATED DIFFICULTY SCALING
       // ========================================================
-      const baseInterval = Math.max(420, 800 - state.survivalTime * 3);
-      const spawnInterval = isRushMode ? Math.max(280, baseInterval * 0.6) : baseInterval;
+      const time = state.survivalTime;
+      // Accelerated spawn rate: base drops from 720ms down to 140ms over time!
+      const baseInterval = Math.max(140, 720 - time * 7.0);
+      const spawnInterval = isRushMode ? Math.max(85, baseInterval * 0.5) : baseInterval;
+
       if (currentTime - state.lastEnemySpawnTime > spawnInterval) {
         state.lastEnemySpawnTime = currentTime;
-        const rand = Math.random();
-        const spawnX = 40 + Math.random() * (state.canvasWidth - 80);
 
-        if (rand < 0.45) {
-          // Scout Jet Fighter (Light & Fast)
-          state.enemies.push({
-            id: Math.random(),
-            x: spawnX,
-            y: -30,
-            vx: (Math.random() - 0.5) * 1.8,
-            vy: 3.5 + Math.random() * 1.8,
-            width: 32,
-            height: 36,
-            hp: 2,
-            maxHp: 2,
-            type: "scout",
-            color: "#e11d48",
-            scoreValue: 120,
-            lastShootTime: currentTime + Math.random() * 800,
-            shootInterval: 1800 + Math.random() * 600,
-          });
-        } else if (rand < 0.8) {
-          // Interceptor Jet Fighter (Medium Twin Cannon)
-          state.enemies.push({
-            id: Math.random(),
-            x: spawnX,
-            y: -40,
-            vx: (Math.random() - 0.5) * 1.2,
-            vy: 2.2 + Math.random() * 1.2,
-            width: 42,
-            height: 46,
-            hp: 4,
-            maxHp: 4,
-            type: "interceptor",
-            color: "#f59e0b",
-            scoreValue: 260,
-            lastShootTime: currentTime + Math.random() * 600,
-            shootInterval: 1400 + Math.random() * 500,
-          });
-        } else {
-          // Elite Battleship Fighter (Heavy Armored)
-          state.enemies.push({
-            id: Math.random(),
-            x: spawnX,
-            y: -50,
-            vx: (Math.random() - 0.5) * 0.8,
-            vy: 1.6 + Math.random() * 1.0,
-            width: 52,
-            height: 56,
-            hp: 8,
-            maxHp: 8,
-            type: isRushMode ? "elite" : "meteor",
-            color: isRushMode ? "#a855f7" : "#0ea5e9",
-            scoreValue: 480,
-            angle: 0,
-            lastShootTime: currentTime + Math.random() * 500,
-            shootInterval: 1200 + Math.random() * 400,
-          });
+        // Squad size scaling: single ship early on, expanding into pairs, trios, or full squadrons
+        let squadCount = 1;
+        const squadRand = Math.random();
+        if (isRushMode) {
+          squadCount = squadRand < 0.45 ? 2 : squadRand < 0.85 ? 3 : 4;
+        } else if (time > 75) {
+          squadCount = squadRand < 0.35 ? 2 : squadRand < 0.75 ? 3 : 4;
+        } else if (time > 40) {
+          squadCount = squadRand < 0.5 ? 1 : squadRand < 0.85 ? 2 : 3;
+        } else if (time > 15) {
+          squadCount = squadRand < 0.65 ? 1 : 2;
+        }
+
+        // Higher chance of heavier enemy types as time progresses
+        const eliteChance = Math.min(0.38, 0.10 + time * 0.0035);
+        const interceptorChance = Math.min(0.48, 0.30 + time * 0.0025);
+
+        for (let s = 0; s < squadCount; s++) {
+          const rand = Math.random();
+          // Distribute multi-ship spawns nicely across the screen width
+          const offsetSpan = (state.canvasWidth - 80) / Math.max(1, squadCount);
+          const spawnX = 35 + s * offsetSpan + Math.random() * (offsetSpan * 0.75);
+          const spawnY = -30 - s * 22;
+
+          if (rand > (1 - eliteChance)) {
+            // Elite Battleship Fighter (Heavy Armored & Lethal)
+            // Scaling HP: starts at 14, increases rapidly by +0.55 per second
+            const eliteHp = Math.round((14 + time * 0.55) * (isRushMode ? 1.25 : 1));
+            state.enemies.push({
+              id: Math.random(),
+              x: Math.max(25, Math.min(state.canvasWidth - 75, spawnX)),
+              y: spawnY,
+              vx: (Math.random() - 0.5) * 1.0,
+              vy: 1.8 + Math.min(1.6, time * 0.015) + Math.random() * 0.6,
+              width: 52,
+              height: 56,
+              hp: eliteHp,
+              maxHp: eliteHp,
+              type: isRushMode ? "elite" : "meteor",
+              color: isRushMode ? "#a855f7" : "#0ea5e9",
+              scoreValue: 480 + Math.floor(time * 6),
+              angle: 0,
+              lastShootTime: currentTime + Math.random() * 400,
+              shootInterval: Math.max(700, 1200 - time * 6),
+            });
+          } else if (rand < interceptorChance) {
+            // Interceptor Jet Fighter (Medium Twin Cannon)
+            // Scaling HP: starts at 6, increases by +0.28 per second
+            const interHp = Math.round((6 + time * 0.28) * (isRushMode ? 1.25 : 1));
+            state.enemies.push({
+              id: Math.random(),
+              x: Math.max(20, Math.min(state.canvasWidth - 65, spawnX)),
+              y: spawnY,
+              vx: (Math.random() - 0.5) * 1.5,
+              vy: 2.5 + Math.min(2.0, time * 0.02) + Math.random() * 0.8,
+              width: 42,
+              height: 46,
+              hp: interHp,
+              maxHp: interHp,
+              type: "interceptor",
+              color: "#f59e0b",
+              scoreValue: 260 + Math.floor(time * 3),
+              lastShootTime: currentTime + Math.random() * 500,
+              shootInterval: Math.max(850, 1400 - time * 7),
+            });
+          } else {
+            // Scout Jet Fighter (Light & Fast Agility)
+            // Scaling HP: starts at 3, increases by +0.12 per second
+            const scoutHp = Math.round((3 + time * 0.12) * (isRushMode ? 1.25 : 1));
+            state.enemies.push({
+              id: Math.random(),
+              x: Math.max(15, Math.min(state.canvasWidth - 55, spawnX)),
+              y: spawnY,
+              vx: (Math.random() - 0.5) * 2.0,
+              vy: 3.8 + Math.min(2.5, time * 0.03) + Math.random() * 1.2,
+              width: 32,
+              height: 36,
+              hp: scoutHp,
+              maxHp: scoutHp,
+              type: "scout",
+              color: "#e11d48",
+              scoreValue: 120 + Math.floor(time * 2),
+              lastShootTime: currentTime + Math.random() * 600,
+              shootInterval: Math.max(1000, 1700 - time * 8),
+            });
+          }
         }
       }
 
@@ -1042,11 +1168,13 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
       // 5. ENEMY SHOOTING MECHANISM (GAMEPLAY DIFFICULTY UP!)
       // ========================================================
       state.enemies.forEach((enemy) => {
-        if (enemy.y > 10 && enemy.y < state.canvasHeight - 100) {
-          const shootInterval = enemy.shootInterval || 1800;
+        if (enemy.y > 10 && enemy.y < state.canvasHeight - 80) {
+          const shootInterval = enemy.shootInterval || 1400;
           if (currentTime - (enemy.lastShootTime || 0) >= shootInterval) {
             enemy.lastShootTime = currentTime;
             sound.playEnemyLaser();
+
+            const bulletSpeedBonus = Math.min(2.2, time * 0.025);
 
             if (enemy.type === "scout") {
               // Scout fires single aimed red plasma bullet downward
@@ -1056,8 +1184,8 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
               state.enemyBullets.push({
                 x: enemy.x + enemy.width / 2,
                 y: enemy.y + enemy.height,
-                vx: Math.cos(angle) * 5.2,
-                vy: Math.sin(angle) * 5.2,
+                vx: Math.cos(angle) * (5.2 + bulletSpeedBonus),
+                vy: Math.sin(angle) * (5.2 + bulletSpeedBonus),
                 radius: 4,
                 color: "#f43f5e",
                 damage: 15,
@@ -1069,7 +1197,7 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
                 x: enemy.x + 8,
                 y: enemy.y + enemy.height,
                 vx: -1.2,
-                vy: 5.5,
+                vy: 5.5 + bulletSpeedBonus,
                 radius: 4.5,
                 color: "#fb923c",
                 damage: 18,
@@ -1079,20 +1207,21 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
                 x: enemy.x + enemy.width - 8,
                 y: enemy.y + enemy.height,
                 vx: 1.2,
-                vy: 5.5,
+                vy: 5.5 + bulletSpeedBonus,
                 radius: 4.5,
                 color: "#fb923c",
                 damage: 18,
                 isPlayer: false,
               });
             } else {
-              // Elite fires 3-way spread purple energy barrage
-              [-1.8, 0, 1.8].forEach((spreadVx) => {
+              // Elite fires 3-way, or 5-way spread if survival time > 45s
+              const spreads = time > 45 ? [-2.4, -1.2, 0, 1.2, 2.4] : [-1.8, 0, 1.8];
+              spreads.forEach((spreadVx) => {
                 state.enemyBullets.push({
                   x: enemy.x + enemy.width / 2,
                   y: enemy.y + enemy.height,
                   vx: spreadVx,
-                  vy: 5.0,
+                  vy: 5.0 + bulletSpeedBonus,
                   radius: 5,
                   color: "#c084fc",
                   damage: 22,
@@ -1111,6 +1240,8 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
       // 6A. Player Bullets
       for (let i = state.bullets.length - 1; i >= 0; i--) {
         const b = state.bullets[i];
+        const prevBx = b.x;
+        const prevBy = b.y;
         b.x += b.vx;
         b.y += b.vy;
 
@@ -1119,17 +1250,28 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
           continue;
         }
 
-        // Collision with Enemies
-        let hit = false;
+        // Swept continuous collision detection with padded hitbox to prevent tunneling
+        const pad = (b.radius || 4) + 3;
+        const minBx = Math.min(prevBx, b.x) - pad;
+        const maxBx = Math.max(prevBx, b.x) + pad;
+        const minBy = Math.min(prevBy, b.y) - pad;
+        const maxBy = Math.max(prevBy, b.y) + pad;
+
         for (let j = state.enemies.length - 1; j >= 0; j--) {
           const enemy = state.enemies[j];
+          if (enemy.isDead) continue;
+
+          const eLeft = enemy.x;
+          const eRight = enemy.x + enemy.width;
+          const eTop = enemy.y;
+          const eBottom = enemy.y + enemy.height;
+
           if (
-            b.x > enemy.x &&
-            b.x < enemy.x + enemy.width &&
-            b.y > enemy.y &&
-            b.y < enemy.y + enemy.height
+            maxBx >= eLeft &&
+            minBx <= eRight &&
+            maxBy >= eTop &&
+            minBy <= eBottom
           ) {
-            hit = true;
             state.shotsHit += 1;
 
             // Damage calculation with vulnerability and unified dispatcher
@@ -1253,11 +1395,15 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
           }
         }
 
+        const prevMx = m.x;
+        const prevMy = m.y;
+
         if (target) {
           const targetX = target.x + target.width / 2;
           const targetY = target.y + target.height / 2;
           const mdx = targetX - m.x;
           const mdy = targetY - m.y;
+          const distToTarget = Math.hypot(mdx, mdy);
           const targetAngle = Math.atan2(mdy, mdx);
           const currentAngle = Math.atan2(m.vy, m.vx);
 
@@ -1265,9 +1411,11 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
 
-          const turnRate = state.weapons.seeker_pod >= 2 ? 0.28 : 0.20;
+          // Terminal guidance: turn much faster when closing in to eliminate orbiting around enemies
+          const baseTurnRate = state.weapons.seeker_pod >= 2 ? 0.35 : 0.26;
+          const turnRate = distToTarget < 120 ? Math.max(baseTurnRate, 0.75) : baseTurnRate;
           const newAngle = currentAngle + Math.sign(diff) * Math.min(Math.abs(diff), turnRate);
-          const missileSpeed = 10.5;
+          const missileSpeed = 11.5;
           m.vx = Math.cos(newAngle) * missileSpeed;
           m.vy = Math.sin(newAngle) * missileSpeed;
         }
@@ -1289,14 +1437,19 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
           });
         }
 
-        // Check impact against ANY enemy in proximity
+        // Check impact against ANY enemy in proximity with swept segment detection
         let hitEnemy: Enemy | null = null;
         for (const e of state.enemies) {
           if (e.isDead) continue;
           const ex = e.x + e.width / 2;
           const ey = e.y + e.height / 2;
-          const hitRadius = Math.max(e.width, e.height) / 2 + 12;
-          if (Math.hypot(ex - m.x, ey - m.y) < hitRadius) {
+          const hitRadius = Math.max(e.width, e.height) / 2 + 18;
+
+          const dCurr = Math.hypot(ex - m.x, ey - m.y);
+          const dPrev = Math.hypot(ex - prevMx, ey - prevMy);
+          const dMid = Math.hypot(ex - (prevMx + m.x) * 0.5, ey - (prevMy + m.y) * 0.5);
+
+          if (dCurr < hitRadius || dPrev < hitRadius || dMid < hitRadius) {
             hitEnemy = e;
             break;
           }
@@ -1308,12 +1461,13 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
           createExplosion(m.x, m.y, "#06b6d4", 18);
           sound.playExplosion(false);
 
-          // AoE splash to nearby enemies (55px radius)
+          // AoE splash to nearby enemies (75px radius)
+          const splashRadius = state.weapons.seeker_pod >= 3 ? 80 : 60;
           state.enemies.forEach((other) => {
             if (other !== hitEnemy && !other.isDead) {
               const d = Math.hypot((other.x + other.width / 2) - m.x, (other.y + other.height / 2) - m.y);
-              if (d < 55) {
-                applyDamageToEnemy(other, m.damage * 0.6, "seeker_pod", m.x, m.y);
+              if (d < splashRadius) {
+                applyDamageToEnemy(other, m.damage * 0.65, "seeker_pod", m.x, m.y);
               }
             }
           });
@@ -1355,12 +1509,13 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
           for (const enemy of state.enemies) {
             if (enemy.isDead) continue;
             const edist = Math.hypot((enemy.x + enemy.width / 2) - mine.x, (enemy.y + enemy.height / 2) - mine.y);
-            if (edist < mine.radius) {
+            if (edist < mine.radius + enemy.width / 2) {
               mine.triggered = true;
               mine.poisonTimer = state.weapons.toxic_mine >= 5 ? 4.5 : 2.5;
               // Immediate burst detonation damage
               applyDamageToEnemy(enemy, mine.damage, "toxic_mine", mine.x, mine.y);
               createExplosion(mine.x, mine.y, "#84cc16", 16);
+              sound.playExplosion(false);
               break;
             }
           }
@@ -1383,8 +1538,8 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
           state.enemies.forEach((enemy) => {
             if (enemy.isDead) return;
             const edist = Math.hypot((enemy.x + enemy.width / 2) - mine.x, (enemy.y + enemy.height / 2) - mine.y);
-            if (edist < mine.poisonRadius) {
-              const poisonDps = state.weapons.toxic_mine >= 2 ? 50 : 35;
+            if (edist < mine.poisonRadius + enemy.width / 2) {
+              const poisonDps = state.weapons.toxic_mine >= 2 ? 55 : 38;
               applyDamageToEnemy(enemy, poisonDps * dt, "toxic_mine", enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
               if (state.weapons.toxic_mine >= 4) {
                 enemy.slowTimer = 0.5;
@@ -1418,11 +1573,11 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
             const vdx = v.x - (enemy.x + enemy.width / 2);
             const vdy = v.y - (enemy.y + enemy.height / 2);
             const dist = Math.sqrt(vdx * vdx + vdy * vdy);
-            if (dist < v.radius) {
-              const pullStr = state.weapons.vortex_cannon >= 2 ? 4.5 : 3.0;
+            if (dist < v.radius + enemy.width / 2) {
+              const pullStr = state.weapons.vortex_cannon >= 2 ? 4.8 : 3.2;
               enemy.x += (vdx / dist) * pullStr;
               enemy.y += (vdy / dist) * pullStr;
-              applyDamageToEnemy(enemy, v.dps * dt, "vortex_cannon", v.x, v.y);
+              applyDamageToEnemy(enemy, v.dps * dt * 1.3, "vortex_cannon", v.x, v.y);
             }
           }
         });
@@ -1434,9 +1589,9 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
             sound.playEmp();
             state.enemies.forEach((enemy) => {
               if (enemy.isDead) return;
-              const dist = Math.sqrt((enemy.x - v.x) ** 2 + (enemy.y - v.y) ** 2);
-              if (dist < 150) {
-                applyDamageToEnemy(enemy, 250, "vortex_cannon", v.x, v.y);
+              const dist = Math.sqrt((enemy.x + enemy.width / 2 - v.x) ** 2 + (enemy.y + enemy.height / 2 - v.y) ** 2);
+              if (dist < 170) {
+                applyDamageToEnemy(enemy, 280, "vortex_cannon", v.x, v.y);
               }
             });
           }
@@ -1451,7 +1606,7 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
 
         state.enemies.forEach((enemy) => {
           if (enemy.isDead) return;
-          if (Math.abs(enemy.x + enemy.width / 2 - ib.x1) < 28) {
+          if (Math.abs(enemy.x + enemy.width / 2 - ib.x1) < 32 + enemy.width / 2) {
             applyDamageToEnemy(enemy, ib.dps * dt, "charged_sniper", ib.x1, enemy.y + enemy.height / 2);
           }
         });
@@ -1636,6 +1791,8 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
 
       setScore(state.score);
       setCombo(state.combo);
+      setKillsCount(state.kills);
+      setPlayerHp(state.player.hp);
 
       // ==========================================
       // 10. RENDER CANVAS SCENE
@@ -2115,126 +2272,141 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
   const seconds = (survivalTime % 60).toFixed(1);
   const formattedSurvival = minutes > 0 ? `${minutes}分 ${seconds}秒` : `${seconds}秒`;
 
+  const expProgress = upgradeTarget > prevUpgradeTarget
+    ? Math.min(100, Math.max(0, ((killsCount - prevUpgradeTarget) / (upgradeTarget - prevUpgradeTarget)) * 100))
+    : 0;
+
   return (
     <div
       ref={containerRef}
       id="game-canvas-container"
       onPointerMove={handlePointerMove}
-      className="relative w-full h-full min-h-[540px] max-h-[740px] rounded-2xl overflow-hidden bg-slate-950 border border-cyan-500/20 shadow-2xl select-none touch-none cursor-crosshair flex items-center justify-center"
+      className="relative w-full h-full max-h-full aspect-[3/4] sm:aspect-[4/5] rounded-2xl overflow-hidden bg-slate-950 border border-cyan-500/30 shadow-2xl select-none touch-none cursor-crosshair flex items-center justify-center"
     >
       {/* HTML5 Game Canvas */}
       <canvas ref={canvasRef} id="shooter-canvas" className="w-full h-full block" />
 
-      {/* Top High-Tech HUD Bar */}
+      {/* Sleek Top Combat Dashboard HUD */}
       <div
         id="game-hud-top"
-        className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none z-10"
+        className="absolute top-2 inset-x-2 sm:inset-x-3 flex items-center justify-between pointer-events-none z-10 gap-2"
       >
-        {/* Left: Player Seat Tag, Score & HP */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/85 backdrop-blur-md border border-cyan-500/30 shadow-lg shadow-cyan-950/40">
-            <Crosshair className="w-4 h-4 text-cyan-400 animate-pulse" />
-            <div>
-              <div className="text-[10px] uppercase font-mono text-cyan-400/80 leading-none">機身編號</div>
-              <div className="text-sm font-black font-['Orbitron'] text-white">NO. {playerId}</div>
-            </div>
+        {/* Left: Player Seat, Armor HP & Score */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Seat Tag */}
+          <div className="px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-cyan-500/40 shadow-md flex items-center gap-1.5">
+            <Crosshair className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span className="text-xs font-black font-['Orbitron'] text-white">NO. {playerId}</span>
           </div>
 
-          <div className="px-3 py-1.5 rounded-xl bg-slate-900/85 backdrop-blur-md border border-slate-700/50">
-            <div className="text-[10px] uppercase font-mono text-slate-400 leading-none">得分 SCORE</div>
-            <div className="text-lg font-black font-['Orbitron'] text-cyan-400">
+          {/* Armor HP Bar */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-rose-500/40 shadow-md">
+            <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0 animate-pulse" />
+            <div className="w-12 sm:w-16 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+              <div
+                className={`h-full transition-all duration-200 ${
+                  playerHp > 60
+                    ? "bg-emerald-400"
+                    : playerHp > 25
+                    ? "bg-amber-400"
+                    : "bg-rose-500 animate-pulse"
+                }`}
+                style={{ width: `${Math.max(0, Math.min(100, playerHp))}%` }}
+              />
+            </div>
+            <span className="text-[11px] font-black font-['Orbitron'] text-white">
+              {playerHp}%
+            </span>
+          </div>
+
+          {/* Score */}
+          <div className="px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-700/60 hidden xs:flex items-center gap-1.5">
+            <span className="text-[9px] font-mono text-slate-400 uppercase leading-none">SCORE</span>
+            <span className="text-xs sm:text-sm font-black font-['Orbitron'] text-cyan-400">
               {score.toLocaleString()}
-            </div>
-          </div>
-
-          {/* Player HP Bar */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/85 backdrop-blur-md border border-rose-500/40 shadow-lg shadow-rose-950/30">
-            <Heart className="w-4 h-4 text-rose-400 animate-pulse shrink-0" />
-            <div>
-              <div className="text-[10px] uppercase font-mono text-slate-400 leading-none">裝甲 HULL</div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="w-14 sm:w-16 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-                  <div
-                    className={`h-full transition-all duration-200 ${
-                      playerHp > 60
-                        ? "bg-emerald-400"
-                        : playerHp > 25
-                        ? "bg-amber-400"
-                        : "bg-rose-500 animate-pulse"
-                    }`}
-                    style={{ width: `${Math.max(0, Math.min(100, playerHp))}%` }}
-                  />
-                </div>
-                <span className="text-xs font-black font-['Orbitron'] text-white">
-                  {playerHp}%
-                </span>
-              </div>
-            </div>
+            </span>
           </div>
         </div>
 
-        {/* Center: Unlimited Survival Time Meter */}
+        {/* Center: Survival Time Timer */}
         <div
           id="hud-timer-widget"
-          className={`flex items-center gap-2.5 px-4 py-1.5 rounded-2xl backdrop-blur-md border transition-all duration-300 ${
+          className={`flex items-center gap-2 px-3 py-1 rounded-xl backdrop-blur-md border transition-all duration-300 ${
             isRushMode
-              ? "bg-rose-950/80 border-rose-500 shadow-lg shadow-rose-600/50 scale-105"
-              : "bg-slate-900/80 border-cyan-500/40 shadow-lg shadow-cyan-950/40"
+              ? "bg-rose-950/90 border-rose-500 shadow-lg shadow-rose-600/50 scale-105"
+              : "bg-slate-900/90 border-cyan-500/40 shadow-md"
           }`}
         >
-          <div className="relative w-8 h-8 flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full border border-dashed border-cyan-400/50 animate-[spin_6s_linear_infinite]" />
-            <ShieldAlert
-              className={`w-4 h-4 ${
-                isRushMode ? "text-rose-400 animate-ping" : "text-cyan-400"
-              }`}
-            />
-          </div>
-
-          <div>
-            <div className="text-[10px] font-mono tracking-widest text-slate-400 uppercase leading-none flex items-center gap-1.5">
-              <span>{isRushMode ? "暴走突襲 RUSH" : "極限生存時間"}</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-            </div>
-            <div
-              className={`text-xl font-black font-['Orbitron'] tracking-wider ${
+          <ShieldAlert
+            className={`w-3.5 h-3.5 shrink-0 ${
+              isRushMode ? "text-rose-400 animate-ping" : "text-cyan-400"
+            }`}
+          />
+          <div className="flex flex-col">
+            <span className="text-[9px] font-mono tracking-wider text-slate-400 uppercase leading-none">
+              {isRushMode ? "暴走突襲" : "存活時間"}
+            </span>
+            <span
+              className={`text-xs sm:text-sm font-black font-['Orbitron'] tracking-wider ${
                 isRushMode ? "text-rose-400 animate-pulse" : "text-white"
               }`}
             >
               {formattedSurvival}
-            </div>
+            </span>
           </div>
         </div>
 
-        {/* Right: Combo & EMP Ready */}
-        <div className="flex items-center gap-2">
+        {/* Right: EXP Upgrade Progress, Combo & EMP */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* EXP Progression Bar */}
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-amber-500/40 shadow-md"
+            title={`擊墜升級進度：${killsCount} / ${upgradeTarget}`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between text-[9px] font-mono leading-none gap-2">
+                <span className="text-amber-400 font-bold">升級 EXP</span>
+                <span className="text-slate-300 font-bold">{killsCount}/{upgradeTarget}</span>
+              </div>
+              <div className="w-12 sm:w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700/80 mt-0.5">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-amber-400 transition-all duration-300"
+                  style={{ width: `${expProgress}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Combo Badge */}
           {combo > 1 && (
-            <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/40 backdrop-blur-md animate-bounce">
-              <div className="text-[10px] font-mono text-amber-400 uppercase leading-none">連擊 COMBO</div>
-              <div className="text-base font-black font-['Orbitron'] text-amber-300">{combo}x</div>
+            <div className="px-2 py-1 rounded-xl bg-amber-500/20 border border-amber-500/50 backdrop-blur-md animate-bounce">
+              <span className="text-xs font-black font-['Orbitron'] text-amber-300">{combo}x</span>
             </div>
           )}
 
+          {/* EMP Ability Button */}
           <button
             id="emp-ability-btn"
             onClick={triggerEmp}
             disabled={!empReady}
-            className={`pointer-events-auto px-3.5 py-2 rounded-xl flex items-center gap-1.5 font-bold font-['Chakra_Petch'] text-xs uppercase tracking-wider transition-all duration-200 ${
+            className={`pointer-events-auto px-2.5 sm:px-3 py-1 rounded-xl flex items-center gap-1 font-bold font-['Chakra_Petch'] text-xs uppercase tracking-wider transition-all duration-200 ${
               empReady
-                ? "bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/40 active:scale-95 cursor-pointer"
+                ? "bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md shadow-cyan-500/40 active:scale-95 cursor-pointer"
                 : "bg-slate-800/80 text-slate-500 border border-slate-700/50 cursor-not-allowed"
             }`}
+            title="釋放全畫面超導 EMP 震波 (快捷鍵: E)"
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>EMP {empReady ? "[E鍵/點擊]" : "冷卻中"}</span>
+            <span>EMP{empReady ? "[E]" : ""}</span>
           </button>
         </div>
       </div>
 
-      {/* Active Weapon Arsenal Badges */}
+      {/* Streamlined Active Weapon Arsenal Strip */}
       <div
         id="hud-weapon-arsenal"
-        className="absolute top-16 inset-x-3 flex flex-wrap items-center gap-1.5 pointer-events-none z-10"
+        className="absolute top-12 left-2 sm:left-3 flex flex-wrap items-center gap-1 pointer-events-none z-10 max-w-[80%]"
       >
         {(Object.keys(equippedWeapons) as WeaponId[]).map((wId) => {
           const lvl = equippedWeapons[wId];
@@ -2244,30 +2416,30 @@ export const ShooterCanvas: React.FC<ShooterCanvasProps> = ({
           return (
             <div
               key={wId}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/85 border backdrop-blur-md text-[10px] font-mono font-bold"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-950/80 border backdrop-blur-sm text-[9px] font-mono font-bold"
               style={{
-                borderColor: `${def.color}60`,
+                borderColor: `${def.color}50`,
                 color: def.color,
               }}
             >
               <span>{def.name}</span>
-              <span className="px-1 rounded bg-slate-900 text-white">Lv.{lvl}</span>
+              <span className="px-1 rounded bg-slate-900/90 text-white font-mono">Lv.{lvl}</span>
             </div>
           );
         })}
       </div>
 
-      {/* Bottom Controls Helper */}
+      {/* Minimalist Bottom Touch / Control Hint */}
       <div
         id="hud-controls-helper"
-        className="absolute bottom-2.5 inset-x-3 flex items-center justify-between text-[11px] font-mono text-slate-400 pointer-events-none px-3 py-1 bg-slate-950/70 rounded-xl backdrop-blur-sm border border-slate-800/40"
+        className="absolute bottom-1.5 inset-x-3 flex items-center justify-between text-[10px] font-mono text-slate-400/80 pointer-events-none px-2.5 py-0.5 bg-slate-950/60 rounded-lg backdrop-blur-sm border border-slate-800/30"
       >
         <span className="flex items-center gap-1">
-          <Sparkles className="w-3 h-3 text-cyan-400" />
-          極限生存模式（無限時間直到死亡） • 敵機會發射彈幕，拾取綠色十字急救包修復裝甲！
+          <Sparkles className="w-2.5 h-2.5 text-cyan-400" />
+          滑鼠游標拖曳或 WASD 移動戰機 • 拾取綠色十字急救包修復裝甲
         </span>
-        <span className="hidden sm:inline-block text-cyan-400 font-semibold">
-          Created by 107-01_王禹硯
+        <span className="hidden sm:inline-block text-cyan-400/80 font-medium">
+          NO. {playerId} • 107-01_王禹硯
         </span>
       </div>
 
