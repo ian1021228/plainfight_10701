@@ -10,6 +10,7 @@ import {
   submitScoreToFirebase,
   subscribeToFirebaseLeaderboard,
   fetchTop5FromFirebase,
+  isFirestoreAvailable,
 } from "./lib/firebase";
 import {
   Rocket,
@@ -43,7 +44,7 @@ export default function App() {
   const [top5, setTop5] = useState<ScoreEntry[]>([]);
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [isLeaderboardLoading, setIsLeaderboardLoading] = useState<boolean>(false);
-  const [isFirebaseReady, setIsFirebaseReady] = useState<boolean>(false);
+  const [isFirebaseReady, setIsFirebaseReady] = useState<boolean>(isFirestoreAvailable);
   const [gameSessionId, setGameSessionId] = useState<number>(0);
 
   // Score submission state
@@ -57,7 +58,7 @@ export default function App() {
   const fetchLeaderboard = useCallback(async (isFbActive = false) => {
     setIsLeaderboardLoading(true);
     try {
-      if (isFbActive) {
+      if (isFbActive || isFirestoreAvailable) {
         const fbTop5 = await fetchTop5FromFirebase();
         if (fbTop5 && fbTop5.length > 0) {
           setTop5(fbTop5);
@@ -66,14 +67,18 @@ export default function App() {
         }
       }
 
-      // Fallback to Express backend API
-      const res = await fetch("/api/leaderboard");
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.top5)) {
-          setTop5(data.top5);
-          setTotalRecords(data.total || data.top5.length);
+      // Fallback to Express backend API (if running with server)
+      try {
+        const res = await fetch("/api/leaderboard");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.top5)) {
+            setTop5(data.top5);
+            setTotalRecords(data.total || data.top5.length);
+          }
         }
+      } catch {
+        // Backend not available (e.g. static hosting on GitHub Pages)
       }
     } catch (err) {
       console.warn("Failed to fetch leaderboard:", err);
@@ -86,21 +91,33 @@ export default function App() {
   useEffect(() => {
     let unsubscribe: () => void = () => {};
 
-    // First load from local API
-    fetchLeaderboard(false);
+    // If Firestore is available (works directly in browser on GitHub Pages too!)
+    if (isFirestoreAvailable) {
+      setIsFirebaseReady(true);
+      fetchLeaderboard(true);
+      try {
+        unsubscribe = subscribeToFirebaseLeaderboard((fbTop5) => {
+          if (fbTop5 && fbTop5.length > 0) {
+            setTop5(fbTop5);
+          }
+        });
+      } catch {
+        // fallback
+      }
+    } else {
+      fetchLeaderboard(false);
+    }
 
-    // Verify Firestore status server-side to prevent client-side 404 network errors
+    // Verify Firestore status server-side if backend exists
     fetch("/api/firebase-status")
-      .then((res) => res.json())
+      .then((res) => {
+        if (res.ok) return res.json();
+        return null;
+      })
       .then((data) => {
         if (data && data.ready) {
           setIsFirebaseReady(true);
           fetchLeaderboard(true);
-          unsubscribe = subscribeToFirebaseLeaderboard((fbTop5) => {
-            if (fbTop5 && fbTop5.length > 0) {
-              setTop5(fbTop5);
-            }
-          });
         }
       })
       .catch(() => {});
@@ -134,8 +151,8 @@ export default function App() {
     setSubmissionSuccess(false);
 
     try {
-      // 1. Non-blocking async submission directly to Firebase Firestore if verified ready
-      if (isFirebaseReady) {
+      // 1. Direct submission to Firebase Firestore (works everywhere, including GitHub Pages)
+      if (isFirebaseReady || isFirestoreAvailable) {
         submitScoreToFirebase({
           playerId: stats.playerId,
           score: stats.score,
@@ -145,30 +162,55 @@ export default function App() {
         }).catch(() => {});
       }
 
-      // 2. Submit to local Express backend + Google Sheets pipeline
-      const res = await fetch("/api/score", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(stats),
-      });
+      // 2. Submit to local Express backend if present
+      let serverHandled = false;
+      try {
+        const res = await fetch("/api/score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(stats),
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        setSubmissionSuccess(true);
-        setPlayerRank(data.rank);
-        setIsTop5(data.isTop5);
-        if (Array.isArray(data.top5)) {
-          setTop5(data.top5);
+        if (res.ok) {
+          const data = await res.json();
+          setSubmissionSuccess(true);
+          setPlayerRank(data.rank);
+          setIsTop5(data.isTop5);
+          if (Array.isArray(data.top5)) {
+            setTop5(data.top5);
+          }
+          serverHandled = true;
         }
-      } else {
+      } catch {
+        // Backend not available (static GitHub Pages)
+      }
+
+      // 3. Fallback ranking calculation for static hosts (GitHub Pages)
+      if (!serverHandled) {
         setSubmissionSuccess(true);
+        setTop5((prev) => {
+          const newEntry: ScoreEntry = {
+            id: `entry-${Date.now()}`,
+            playerId: stats.playerId,
+            score: stats.score,
+            kills: stats.kills,
+            combo: stats.maxCombo,
+            accuracy: stats.accuracy,
+            timestamp: new Date().toISOString(),
+          };
+          const combined = [...prev, newEntry].sort((a, b) => b.score - a.score);
+          const rank = combined.findIndex((e) => e.id === newEntry.id) + 1;
+          setPlayerRank(rank);
+          setIsTop5(rank <= 5);
+          return combined.slice(0, 5);
+        });
       }
     } catch (err) {
       console.warn("Error submitting score:", err);
       setSubmissionSuccess(true);
     } finally {
       setIsSubmitting(false);
-      fetchLeaderboard();
+      fetchLeaderboard(true);
     }
   };
 
