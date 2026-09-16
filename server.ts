@@ -80,6 +80,28 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // Check if Firebase Firestore (default) database is active & provisioned
+  app.get("/api/firebase-status", async (_req, res) => {
+    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "flydrop-691bb";
+    const apiKey = process.env.VITE_FIREBASE_API_KEY || "AIzaSyCbTCPeuXlpm6WH8HZwAc7f45hckYvdseA";
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const checkRes = await fetch(
+        `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents?key=${apiKey}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+      // 200 = ready; 403 = permission denied (database exists & rules applied); 404 = database not provisioned
+      if (checkRes.status === 200 || checkRes.status === 403) {
+        return res.json({ ready: true, status: checkRes.status });
+      }
+      return res.json({ ready: false, status: checkRes.status, reason: "database_not_created" });
+    } catch {
+      return res.json({ ready: false, reason: "connection_error" });
+    }
+  });
+
   // GET: Fetch global Leaderboard (Top 5 + total count)
   app.get("/api/leaderboard", async (_req, res) => {
     try {

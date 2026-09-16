@@ -43,7 +43,7 @@ export default function App() {
   const [top5, setTop5] = useState<ScoreEntry[]>([]);
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [isLeaderboardLoading, setIsLeaderboardLoading] = useState<boolean>(false);
-  const [, setIsFirebaseSynced] = useState<boolean>(true);
+  const [isFirebaseReady, setIsFirebaseReady] = useState<boolean>(false);
   const [gameSessionId, setGameSessionId] = useState<number>(0);
 
   // Score submission state
@@ -53,20 +53,20 @@ export default function App() {
   // Audio mute state
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
-  // Fetch Leaderboard (from Firebase + fallback local API)
-  const fetchLeaderboard = useCallback(async () => {
+  // Fetch Leaderboard (from Firebase if verified, else fallback to Express backend API)
+  const fetchLeaderboard = useCallback(async (isFbActive = false) => {
     setIsLeaderboardLoading(true);
     try {
-      // 1. Try fetching from Firebase Firestore first
-      const fbTop5 = await fetchTop5FromFirebase();
-      if (fbTop5 && fbTop5.length > 0) {
-        setTop5(fbTop5);
-        setIsFirebaseSynced(true);
-        setIsLeaderboardLoading(false);
-        return;
+      if (isFbActive) {
+        const fbTop5 = await fetchTop5FromFirebase();
+        if (fbTop5 && fbTop5.length > 0) {
+          setTop5(fbTop5);
+          setIsLeaderboardLoading(false);
+          return;
+        }
       }
 
-      // 2. Fallback to Express backend API
+      // Fallback to Express backend API
       const res = await fetch("/api/leaderboard");
       if (res.ok) {
         const data = await res.json();
@@ -84,22 +84,33 @@ export default function App() {
 
   // Real-time Firestore subscription & periodic fallback
   useEffect(() => {
-    fetchLeaderboard();
+    let unsubscribe: () => void = () => {};
 
-    // Subscribe to real-time Firebase Firestore leaderboard updates
-    const unsubscribe = subscribeToFirebaseLeaderboard((fbTop5) => {
-      if (fbTop5 && fbTop5.length > 0) {
-        setTop5(fbTop5);
-        setIsFirebaseSynced(true);
-      }
-    });
+    // First load from local API
+    fetchLeaderboard(false);
 
-    const interval = setInterval(fetchLeaderboard, 12000);
+    // Verify Firestore status server-side to prevent client-side 404 network errors
+    fetch("/api/firebase-status")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.ready) {
+          setIsFirebaseReady(true);
+          fetchLeaderboard(true);
+          unsubscribe = subscribeToFirebaseLeaderboard((fbTop5) => {
+            if (fbTop5 && fbTop5.length > 0) {
+              setTop5(fbTop5);
+            }
+          });
+        }
+      })
+      .catch(() => {});
+
+    const interval = setInterval(() => fetchLeaderboard(isFirebaseReady), 12000);
     return () => {
       unsubscribe();
       clearInterval(interval);
     };
-  }, [fetchLeaderboard]);
+  }, [fetchLeaderboard, isFirebaseReady]);
 
   // Audio mute toggle
   const toggleSound = () => {
@@ -123,18 +134,16 @@ export default function App() {
     setSubmissionSuccess(false);
 
     try {
-      // 1. Non-blocking async submission directly to Firebase Firestore
-      submitScoreToFirebase({
-        playerId: stats.playerId,
-        score: stats.score,
-        kills: stats.kills,
-        combo: stats.maxCombo,
-        accuracy: stats.accuracy,
-      }).then((fbResult) => {
-        if (fbResult.success) {
-          setIsFirebaseSynced(true);
-        }
-      });
+      // 1. Non-blocking async submission directly to Firebase Firestore if verified ready
+      if (isFirebaseReady) {
+        submitScoreToFirebase({
+          playerId: stats.playerId,
+          score: stats.score,
+          kills: stats.kills,
+          combo: stats.maxCombo,
+          accuracy: stats.accuracy,
+        }).catch(() => {});
+      }
 
       // 2. Submit to local Express backend + Google Sheets pipeline
       const res = await fetch("/api/score", {
